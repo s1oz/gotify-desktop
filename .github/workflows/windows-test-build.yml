@@ -1,0 +1,47 @@
+# Manual Windows amd64 test build. Same steps as the Release workflow's
+# windows-linux job, but only amd64, no updater signing, and no GitHub release.
+# The app source is the PR #9 commit; this workflow must not be pushed to
+# fix/markdown-data-image.
+name: Windows test build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-amd64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # App code of PR #9 (s1oz/gotify-desktop#9), not this workflow commit.
+          ref: 94a218c85493ff03b9bbfc04bb37b3cb3497fdac
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+      - name: Install NSIS for the Windows installer
+        run: sudo apt-get update && sudo apt-get install -y nsis
+      - run: bun install --frozen-lockfile
+        working-directory: frontend
+      - run: go run github.com/egoist/mygo/cmd/mygo build -platform windows/amd64 -o build
+      - name: Collect the package
+        run: |
+          mkdir dist
+          version=$(jq -r .version mygo.json)
+          git rev-parse HEAD > dist/COMMIT.txt
+          mv "build/windows-amd64/gotify-desktop-setup-$version-amd64.exe" \
+            "dist/Gotify-Desktop-$version-dataimage-test-windows-amd64-setup.exe"
+          if compgen -G "build/windows-amd64/gotify-desktop-$version-windows-amd64.tar.gz" > /dev/null; then
+            mv "build/windows-amd64/gotify-desktop-$version-windows-amd64.tar.gz" \
+              "dist/gotify-desktop-$version-dataimage-test-windows-amd64.tar.gz"
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-amd64
+          path: dist/*
+          if-no-files-found: error
